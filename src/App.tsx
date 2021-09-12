@@ -1,25 +1,30 @@
 import React from 'react';
-import logo from './logo.svg';
 import './App.css';
+import { getPeerConnection, useAddEventListen, useMediaList } from './hook/mediaUtil';
 
+let i = 0;
 function App() {
+  const mediaList = useMediaList();
+  const cameras = mediaList?.filter((device) => device.kind === "videoinput") || [];
+
+  const conn = getPeerConnection();
+  useAddEventListen('icecandidate', handleIce, conn);
+  useAddEventListen('addstream', handleAddStream, conn);
+
+  function handleIce(data) {
+    // console.log("sent candidate");
+    // socket.emit("ice", data.candidate, roomName);
+  }
+  
+  function handleAddStream(data) {
+    // const peerFace = document.getElementById("peerFace");
+    // peerFace.srcObject = data.stream;
+  }
+  
+
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <div>Hello world! {i++}</div>
   );
 }
 
