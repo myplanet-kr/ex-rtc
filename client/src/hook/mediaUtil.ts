@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Socket } from "socket.io-client";
-import { CameraConstraintType, STUNS } from "../util";
+import { CameraConstraintType, IO_DEFAULT, STUNS } from "../util";
 
 export const roomName = "roomName";
 export const useMediaList = () => {
@@ -18,7 +18,9 @@ export const useMediaList = () => {
 
 export const useStream = (constraint: CameraConstraintType) => {
   const [stream, setStream] = useState<MediaStream>();
-  const [mute, setMute] = useState(false);
+  const [mute, setMute] = useState(IO_DEFAULT.audio);
+  const [view, setView] = useState(IO_DEFAULT.video);
+
   useEffect(() => {
     async function loadUserMedia(constraint: CameraConstraintType) {
       const mediaStream = await window.navigator.mediaDevices.getUserMedia(
@@ -37,7 +39,15 @@ export const useStream = (constraint: CameraConstraintType) => {
       });
     }
   };
-  return { stream, mute, soundToggle };
+  const viewToggle = () => {
+    if (stream) {
+      setView((v) => {
+        stream.getVideoTracks().forEach((track) => (track.enabled = !v));
+        return !v;
+      });
+    }
+  };
+  return { stream, mute, view, soundToggle, viewToggle };
 };
 
 const getPeerConnection = () => {
@@ -64,14 +74,12 @@ export const useWebRTC = (socket: Socket, otherVideo: any) => {
   useAddEventListen(
     "addstream",
     (data: any) => {
-      console.log("add stream worked");
       otherVideo.current.srcObject = data.stream;
     },
     conn
   );
   useEffect(() => {
     socket.on("welcome", async () => {
-      console.log("first of all: welcome");
       setChannel(conn.createDataChannel("chat"));
       const offer = await conn.createOffer();
       conn.setLocalDescription(offer);
@@ -81,9 +89,7 @@ export const useWebRTC = (socket: Socket, otherVideo: any) => {
     socket.on("offer", async (offer) => {
       conn.addEventListener("datachannel", (event) => {
         setDataChannel(event.channel);
-        dataChannel?.addEventListener("message", (event) =>
-          console.log(event.data)
-        );
+        dataChannel?.addEventListener("message", (event) => console.log(event));
       });
       conn.setRemoteDescription(offer);
       const answer = await conn.createAnswer();
