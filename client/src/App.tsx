@@ -11,35 +11,42 @@ import {
 } from "react-bootstrap";
 import { io } from "socket.io-client";
 import "./App.css";
-import { useMediaList, useStream, useWebRTC } from "./hook/mediaUtil";
+import {
+  getPeerConnection,
+  useAddEventListen,
+  useMediaList,
+  useStream,
+  useWebRTC,
+} from "./hook/mediaUtil";
 import { API_SEVER, CameraConstraintType, getCameraConstraints } from "./util";
 
 function App() {
-  const [mikes, setMikes] = useState<MediaDeviceInfo[]>([]);
-  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
-  const mediaList = useMediaList();
-  const roomNameInputRef = createRef<HTMLInputElement>();
-
-  useEffect(() => {
-    setMikes(mediaList?.filter((x) => x.kind === "audioinput") || []);
-    setCameras(mediaList?.filter((x) => x.kind === "videoinput") || []);
-  }, [mediaList]);
-
+  const socket = useMemo(() => io(API_SEVER), []);
+  const { mikes, cameras } = useMediaList();
+  const conn = useMemo(() => getPeerConnection(), []);
   const meVideo = useRef<HTMLVideoElement>(null);
   const otherVideo = useRef<HTMLVideoElement>(null);
-  const socket = useMemo(() => io(API_SEVER), []);
-  const conn = useWebRTC(socket, otherVideo);
+  const roomNameInputRef = createRef<HTMLInputElement>();
+
   const [constraint, setConstraint] = useState<CameraConstraintType>(
     getCameraConstraints()
   );
+  const { stream, mute, soundToggle, view, viewToggle } = useStream(constraint);
+  useWebRTC(conn, socket);
+  useAddEventListen(
+    "addstream",
+    (data: any) => {
+      if (otherVideo?.current) {
+        otherVideo.current.srcObject = data.stream;
+      }
+    },
+    conn
+  );
 
   useEffect(() => {
-    const cameras =
-      mediaList?.filter((device) => device.kind === "videoinput") || [];
     const camerasConstraint = getCameraConstraints(cameras[0]?.deviceId);
     setConstraint(camerasConstraint);
-  }, [mediaList]);
-  const { stream, mute, soundToggle, view, viewToggle } = useStream(constraint);
+  }, [cameras]);
 
   if (meVideo.current && stream) {
     meVideo.current.srcObject = stream;

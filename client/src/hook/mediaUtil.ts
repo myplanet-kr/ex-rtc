@@ -5,6 +5,7 @@ import { CameraConstraintType, IO_DEFAULT, STUNS } from "../util";
 export const roomName = "roomName";
 export const useMediaList = () => {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>();
+
   useEffect(() => {
     async function loadDevices() {
       const loadDevices =
@@ -13,7 +14,12 @@ export const useMediaList = () => {
     }
     loadDevices();
   }, []);
-  return devices;
+
+  return {
+    devices,
+    mikes: devices?.filter((x) => x.kind === "audioinput") || [],
+    cameras: devices?.filter((x) => x.kind === "videoinput") || [],
+  };
 };
 
 export const useStream = (constraint: CameraConstraintType) => {
@@ -50,7 +56,7 @@ export const useStream = (constraint: CameraConstraintType) => {
   return { stream, mute, view, soundToggle, viewToggle };
 };
 
-const getPeerConnection = () => {
+export const getPeerConnection = () => {
   return new RTCPeerConnection({
     iceServers: [
       {
@@ -60,21 +66,13 @@ const getPeerConnection = () => {
   });
 };
 
-export const useWebRTC = (socket: Socket, otherVideo: any) => {
-  const conn = useMemo(() => getPeerConnection(), []);
+export const useWebRTC = (conn: RTCPeerConnection, socket: Socket) => {
   const [channel, setChannel] = useState<RTCDataChannel | null>(null);
   const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
   useAddEventListen(
     "icecandidate",
     (data: any) => {
       socket.emit("ice", data.candidate, roomName);
-    },
-    conn
-  );
-  useAddEventListen(
-    "addstream",
-    (data: any) => {
-      otherVideo.current.srcObject = data.stream;
     },
     conn
   );
