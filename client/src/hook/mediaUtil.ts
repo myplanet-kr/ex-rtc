@@ -1,73 +1,46 @@
-import React, { useEffect, useMemo, useState } from 'react';
-// import SocketIO from 'socket.io';
+import { useEffect, useMemo, useState } from "react";
+import { Socket } from "socket.io-client";
+import { CameraConstraintType, STUNS } from "../util";
 
+export const roomName = "roomName";
 export const useMediaList = () => {
-  const [device, setDevices] = useState<any[]>();
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>();
   useEffect(() => {
-    window.navigator.mediaDevices.enumerateDevices().then(r => setDevices(r));
+    async function loadDevices() {
+      const loadDevices =
+        await window.navigator.mediaDevices.enumerateDevices();
+      setDevices(loadDevices);
+    }
+    loadDevices();
   }, []);
-  return device;
-}
-
-export const getCameraConstraints = (deviceId?: string) => ({
-  audio: true,
-  video: deviceId ? { deviceId: { exact: deviceId } }: { facingMode: "user" }
-});
-
-type CameraConstraintType = {
-  audio: boolean,
-  video: Object
-}
+  return devices;
+};
 
 export const useStream = (constraint: CameraConstraintType) => {
   const [stream, setStream] = useState<MediaStream>();
   const [mute, setMute] = useState(false);
   useEffect(() => {
-    window.navigator.mediaDevices.getUserMedia(constraint).then(r => setStream(r));
+    async function loadUserMedia(constraint: CameraConstraintType) {
+      const mediaStream = await window.navigator.mediaDevices.getUserMedia(
+        constraint
+      );
+      setStream(mediaStream);
+    }
+    loadUserMedia(constraint);
   }, [constraint]);
 
   const soundToggle = () => {
-    setMute((m) => {
-      stream?.getAudioTracks().forEach((track) => track.enabled = !m);
-      return !m;
-    });
-  }
+    if (stream) {
+      setMute((m) => {
+        stream.getAudioTracks().forEach((track) => (track.enabled = !m));
+        return !m;
+      });
+    }
+  };
   return { stream, mute, soundToggle };
-}
-// let myStream;
-// let muted = false;
-// let cameraOff = false;
-// let roomName;
-// let myPeerConnection;
-// let myDataChannel;
+};
 
-// export async function getCameras() {
-//     try {
-//       const devices = await navigator.mediaDevices.enumerateDevices();
-//       const cameras = devices.filter((device) => device.kind === "videoinput");
-//       const currentCamera = myStream.getVideoTracks()[0];
-//       cameras.forEach((camera) => {
-//         const option = document.createElement("option");
-//         option.value = camera.deviceId;
-//         option.innerText = camera.label;
-//         if (currentCamera.label === camera.label) {
-//           option.selected = true;
-//         }
-//         camerasSelect.appendChild(option);
-//       });
-//     } catch (e) {
-//       console.log(e);
-//     }
-//   }
-const STUNS = [
-  "stun:stun.l.google.com:19302",
-  "stun:stun1.l.google.com:19302",
-  "stun:stun2.l.google.com:19302",
-  "stun:stun3.l.google.com:19302",
-  "stun:stun4.l.google.com:19302",
-]
-
-export const getPeerConnection = () => {
+const getPeerConnection = () => {
   return new RTCPeerConnection({
     iceServers: [
       {
@@ -75,20 +48,75 @@ export const getPeerConnection = () => {
       },
     ],
   });
-}
+};
 
-export const useAddEventListen = (event: string, fn: EventListenerOrEventListenerObject, target: EventTarget) => {
+export const useWebRTC = (socket: Socket, otherVideo: any) => {
+  const conn = useMemo(() => getPeerConnection(), []);
+  const [channel, setChannel] = useState<RTCDataChannel | null>(null);
+  const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
+  useAddEventListen(
+    "icecandidate",
+    (data: any) => {
+      socket.emit("ice", data.candidate, roomName);
+    },
+    conn
+  );
+  useAddEventListen(
+    "addstream",
+    (data: any) => {
+      console.log("add stream worked");
+      otherVideo.current.srcObject = data.stream;
+    },
+    conn
+  );
+  useEffect(() => {
+    socket.on("welcome", async () => {
+      console.log("first of all: welcome");
+      setChannel(conn.createDataChannel("chat"));
+      const offer = await conn.createOffer();
+      conn.setLocalDescription(offer);
+      socket.emit("offer", offer, roomName);
+    });
+
+    socket.on("offer", async (offer) => {
+      conn.addEventListener("datachannel", (event) => {
+        setDataChannel(event.channel);
+        dataChannel?.addEventListener("message", (event) =>
+          console.log(event.data)
+        );
+      });
+      conn.setRemoteDescription(offer);
+      const answer = await conn.createAnswer();
+      conn.setLocalDescription(answer);
+      socket.emit("answer", answer, roomName);
+    });
+
+    socket.on("answer", (answer) => {
+      conn.setRemoteDescription(answer);
+    });
+
+    socket.on("ice", (ice) => {
+      conn.addIceCandidate(ice);
+    });
+  }, [channel, conn, dataChannel, socket]);
+  return conn;
+};
+
+export const useAddEventListen = (
+  event: string,
+  fn: EventListenerOrEventListenerObject,
+  target: EventTarget
+) => {
   target.addEventListener(event, fn);
   return () => target.removeEventListener(event, fn);
-}
+};
 
-function makeConnection() {
-  myStream
-    .getTracks()
-    .forEach((track) => myPeerConnection.addTrack(track, myStream));
-}
+// function makeConnection() {
+//   myStream
+//     .getTracks()
+//     .forEach((track) => myPeerConnection.addTrack(track, myStream));
+// }
 
-  
 //   export async function handleCameraChange() {
 //     await getMedia(camerasSelect.value);
 //     if (myPeerConnection) {
@@ -99,4 +127,3 @@ function makeConnection() {
 //       videoSender.replaceTrack(videoTrack);
 //     }
 //   }
-  

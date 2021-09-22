@@ -1,30 +1,52 @@
-import React from 'react';
-import './App.css';
-import { getPeerConnection, useAddEventListen, useMediaList } from './hook/mediaUtil';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { io } from "socket.io-client";
+import "./App.css";
+import { roomName, useMediaList, useStream, useWebRTC } from "./hook/mediaUtil";
+import { API_SEVER, CameraConstraintType, getCameraConstraints } from "./util";
 
-let i = 0;
 function App() {
   const mediaList = useMediaList();
-  const cameras = mediaList?.filter((device) => device.kind === "videoinput") || [];
+  const meVideo = useRef<HTMLVideoElement>(null);
+  const otherVideo = useRef<HTMLVideoElement>(null);
+  const socket = useMemo(() => io(API_SEVER), []);
+  const [constraint, setConstraint] = useState<CameraConstraintType>(
+    getCameraConstraints()
+  );
 
-  const conn = getPeerConnection();
-  useAddEventListen('icecandidate', handleIce, conn);
-  useAddEventListen('addstream', handleAddStream, conn);
+  useEffect(() => {
+    const cameras =
+      mediaList?.filter((device) => device.kind === "videoinput") || [];
+    const camerasConstraint = getCameraConstraints(cameras[0]?.deviceId);
+    setConstraint(camerasConstraint);
+  }, [mediaList]);
+  const { stream, mute, soundToggle } = useStream(constraint);
 
-  function handleIce(data) {
-    // console.log("sent candidate");
-    // socket.emit("ice", data.candidate, roomName);
+  if (meVideo.current && stream) {
+    meVideo.current.srcObject = stream;
   }
-  
-  function handleAddStream(data) {
-    // const peerFace = document.getElementById("peerFace");
-    // peerFace.srcObject = data.stream;
-  }
-  
-
+  const conn = useWebRTC(socket, otherVideo);
+  console.log(conn);
+  useEffect(() => {
+    if (stream) {
+      stream.getTracks().forEach((t) => conn.addTrack(t, stream));
+    }
+  }, [stream, conn]);
 
   return (
-    <div>Hello world! {i++}</div>
+    <>
+      ME VIDEO <br />
+      <video ref={meVideo} autoPlay={true} playsInline={true}></video>
+      YOU VIDEO <br />
+      <video ref={otherVideo} autoPlay={true} playsInline={true}></video>
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          socket.emit("join_room", roomName);
+        }}
+      >
+        방참여
+      </button>
+    </>
   );
 }
 
